@@ -1,6 +1,6 @@
 import time
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 import uuid
 import os
@@ -8,8 +8,8 @@ import os
 
 from open_webui.constants import AUDIT_EVENT
 from open_webui.apps.webui.internal.db import Base, JSONField, get_db
-from open_webui.env import SRC_LOG_LEVELS
-from pydantic import BaseModel, TypeAdapter
+from open_webui.env import AUDIT_LOG_RETENTION_PERIOD, SRC_LOG_LEVELS
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 from sqlalchemy import BigInteger, Column, String
 
 log = logging.getLogger(__name__)
@@ -63,18 +63,22 @@ class AuditLogModel(BaseModel):
     request_info: Optional[RequestInfo] = None
     response_info: Optional[ResponseInfo] = None
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class AuditLogsTable:
     def __init__(self):
-        # Example: 'AUDIT_LOG_RETENTION_PERIOD' = 'PT30D' (ISO 8601 duration string)
-        retention_period_str = os.getenv("AUDIT_LOG_RETENTION_PERIOD", "PT30D")
+        # Example: 'AUDIT_LOG_RETENTION_PERIOD' = 'P30D' (ISO 8601 duration string)
+        retention_period_str = AUDIT_LOG_RETENTION_PERIOD
         timedelta_adapter = TypeAdapter(timedelta)
         try:
             self.retention_period = timedelta_adapter.validate_python(
                 retention_period_str
             )
         except Exception as e:
-            log.exception(f"Invalid retention period format: {retention_period_str}")
+            log.exception(
+                f"Invalid retention period format: {retention_period_str}, error: {e}"
+            )
             self.retention_period = timedelta(days=30)
 
     def insert_new_log(self, audit_log_data: AuditLogModel) -> Optional[AuditLogModel]:
@@ -104,12 +108,10 @@ class AuditLogsTable:
         response_info: Optional[ResponseInfo] = None,
         extra: Optional[dict] = None,
     ) -> Optional[AuditLogModel]:
-        current_time = int(time.time())
 
-        expiration_datetime = (
-            datetime.utcfromtimestamp(current_time) + self.retention_period
-        )
+        expiration_datetime = datetime.now(UTC) + self.retention_period
         entry_expiration_timestamp = int(expiration_datetime.timestamp())
+        current_time = int(datetime.now(UTC).timestamp())
 
         audit_log_data = AuditLogModel(
             id=str(uuid.uuid4()),
