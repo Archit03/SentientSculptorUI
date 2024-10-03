@@ -1,9 +1,11 @@
+from datetime import timedelta
 import json
 from typing import Literal, Optional, TYPE_CHECKING, Protocol
 import logging
 import sys
 
 from loguru import logger
+from pydantic import TypeAdapter
 
 from open_webui.apps.webui.models.audits import (
     AuditLogs,
@@ -12,7 +14,12 @@ from open_webui.apps.webui.models.audits import (
     ResponseInfo,
 )
 from open_webui.constants import AUDIT_EVENT
-from open_webui.env import GLOBAL_LOG_LEVEL
+from open_webui.env import (
+    AUDIT_LOG_FILE_ROTATION_SIZE,
+    AUDIT_LOG_RETENTION_PERIOD,
+    AUDIT_LOGS_FILE_PATH,
+    GLOBAL_LOG_LEVEL,
+)
 
 if TYPE_CHECKING:
     from loguru import Logger, Record, Message
@@ -30,7 +37,17 @@ def stdout_format(record: "Record") -> str:
 
 
 class InterceptHandler(logging.Handler):
+    """
+    Intercepts log records from Python's standard logging module
+    and redirects them to Loguru's logger.
+    """
+
     def emit(self, record):
+        """
+        Called by the standard logging module for each log event.
+        It transforms the standard `LogRecord` into a format compatible with Loguru
+        and passes it to Loguru's logger.
+        """
         try:
             level = logger.level(record.levelname).name
         except ValueError:
@@ -52,6 +69,9 @@ class DatabaseAuditLogHandler:
 
     def __call__(self, message: "Message") -> None:
         record = message.record
+        print(record["extra"])
+        record["extra"].pop("auditable", None)
+
         extra = record["extra"].copy()
         log_level = record["level"].name
 
@@ -211,13 +231,20 @@ def start_logger():
         level=GLOBAL_LOG_LEVEL,
         filter=lambda r: r["extra"].get("auditable") is True,
     )
+    retention_period_str = AUDIT_LOG_RETENTION_PERIOD
+    timedelta_adapter = TypeAdapter(timedelta)
 
-    AUDIT_LOGS_FILE_PATH = "./audits.log"
+    try:
+        retention_period = timedelta_adapter.validate_python(retention_period_str)
+    except Exception:
+        logger.exception(f"Invalid retention period format: {retention_period_str}")
+        retention_period = timedelta(days=30)
+
     logger.add(
         AUDIT_LOGS_FILE_PATH,
         level=GLOBAL_LOG_LEVEL,
-        rotation="10 MB",
-        retention="10 days",  # TODO: Use datetime delta from env var
+        rotation=AUDIT_LOG_FILE_ROTATION_SIZE,
+        retention=retention_period,
         compression="zip",
         serialize=True,
         filter=lambda record: record["extra"].get("auditable") is True,
