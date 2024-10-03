@@ -14,7 +14,6 @@ from open_webui.apps.webui.models.audits import (
 from open_webui.constants import AUDIT_EVENT
 from open_webui.env import GLOBAL_LOG_LEVEL
 
-
 if TYPE_CHECKING:
     from loguru import Logger, Record, Message
 
@@ -24,8 +23,8 @@ def stdout_format(record: "Record") -> str:
     return (
         "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
         "<level>{level: <8}</level> | "
-        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level> - "
-        "{extra[extra_json]}"
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+        "<level>{message}</level> - {extra[extra_json]}"
         "\n{exception}"
     )
 
@@ -54,7 +53,6 @@ class DatabaseAuditLogHandler:
     def __call__(self, message: "Message") -> None:
         record = message.record
         extra = record["extra"].copy()
-        extra.pop("auditable")
         log_level = record["level"].name
 
         event_user_id = extra.pop("event_user_id", None)
@@ -70,12 +68,12 @@ class DatabaseAuditLogHandler:
         request_info = (
             RequestInfo(**request_info_data)
             if isinstance(request_info_data, dict)
-            else None
+            else request_info_data
         )
         response_info = (
             ResponseInfo(**response_info_data)
             if isinstance(response_info_data, dict)
-            else None
+            else response_info_data
         )
 
         event_message = record["message"]
@@ -157,7 +155,12 @@ class AuditLogger:
                 else response_info
             ),
         }
-
+        # making sure all values in log_extra are JSON serializable
+        for key, value in log_extra.items():
+            if isinstance(value, (RequestInfo, ResponseInfo)):
+                log_extra[key] = value.model_dump()
+            elif not isinstance(value, (str, int, float, bool, type(None), dict, list)):
+                log_extra[key] = str(value)
         if extra:
             log_extra.update(extra)
 
@@ -193,7 +196,7 @@ class AuditLogger:
         )
 
 
-def init_logger():
+def start_logger():
     logger.remove()
 
     logger.add(
@@ -209,13 +212,14 @@ def init_logger():
         filter=lambda r: r["extra"].get("auditable") is True,
     )
 
+    AUDIT_LOGS_FILE_PATH = "./audits.log"
     logger.add(
-        "./audits.log",
+        AUDIT_LOGS_FILE_PATH,
         level=GLOBAL_LOG_LEVEL,
         rotation="10 MB",
-        retention="10 days",
+        retention="10 days",  # TODO: Use datetime delta from env var
         compression="zip",
-        format="{time} {level} {message}",
+        serialize=True,
         filter=lambda record: record["extra"].get("auditable") is True,
     )
 
