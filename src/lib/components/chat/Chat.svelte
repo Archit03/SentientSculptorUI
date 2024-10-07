@@ -179,6 +179,21 @@
 				} else {
 					message.citations = [data];
 				}
+			} else if (type === 'code_execution') {
+				if (!message?.code_executions) {
+					message.code_executions = [];
+				}
+				let is_update = false;
+				for (let i = 0; i < message.code_executions.length; i++) {
+					if (message.code_executions[i].uuid === data.uuid) {
+						message.code_executions[i] = data;
+						is_update = true;
+						break;
+					}
+				}
+				if (!is_update) {
+					message.code_executions.push(data);
+				}
 			} else if (type === 'message') {
 				message.content += data.content;
 			} else if (type === 'replace') {
