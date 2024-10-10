@@ -23,7 +23,7 @@ services:
   sentient-ui:
     container_name: sentient-ui
     build:
-      context: ./ui  # Assuming the frontend (web UI) is in the "ui" folder
+      context: .  # Assuming the frontend (web UI) is in the "ui" folder
       dockerfile: Dockerfile  # Use Dockerfile for the web UI
     ports:
       - "3000:3000"  # Frontend exposed on port 3000
