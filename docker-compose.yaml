@@ -1,56 +1,49 @@
 version: '3.8'
 
 services:
-  sentient-sculptor:
-    container_name: sentient-sculptor
-    build:
-      context: .  # Path to your Dockerfile or project
-      dockerfile: Dockerfile  # Use Dockerfile in the same directory (customize as needed)
-    volumes:
-      - sentient-sculptor:/app/data  # Persistent data for the Sentient Sculptor model
-    ports:
-      - "5000:5000"  # Assuming the Sentient Sculptor model exposes an API on port 5000
-    environment:
-      - MODEL_PATH=/app/data/model.pth  # Path to the model file
-      - TOKENIZER_PATH=/app/data/bpe_token.json  # Path to the tokenizer file
-    restart: unless-stopped
-    tty: true
-    depends_on:
-      - database  # Assuming there's a database for managing data (if necessary)
-    networks:
-      - sentient-network
-
-  sentient-ui:
-    container_name: sentient-ui
-    build:
-      context: .  # Assuming the frontend (web UI) is in the "ui" folder
-      dockerfile: Dockerfile  # Use Dockerfile for the web UI
-    ports:
-      - "3000:3000"  # Frontend exposed on port 3000
-    environment:
-      - API_URL=http://sentient-sculptor:5000  # Connect the UI to the Sentient Sculptor API
-    depends_on:
-      - sentient-sculptor
-    networks:
-      - sentient-network
-
   database:
-    container_name: sentient-db
-    image: postgres:13  # Example database if Sentient Sculptor requires one
+    image: postgres:13
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: sentient_db
     volumes:
       - db-data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+
+  sentient-sculptor:
+    build:
+      context: .
+      args:
+        USE_CUDA: ${USE_CUDA-false}
+        USE_OLLAMA: ${USE_OLLAMA-false}
+        USE_CUDA_VER: ${USE_CUDA_VER-cu121}
+        USE_EMBEDDING_MODEL: ${USE_EMBEDDING_MODEL-sentence-transformers/all-MiniLM-L6-v2}
+        USE_RERANKING_MODEL: ${USE_RERANKING_MODEL-""}
+    container_name: sentient-sculptor
     environment:
-      - POSTGRES_USER=your_user
-      - POSTGRES_PASSWORD=your_password
-      - POSTGRES_DB=sentient_db
+      - DATABASE_URL=postgres://user:password@database:5432/sentient_db
+    ports:
+      - '8000:8000'
+    volumes:
+      - sentient-sculptor:/app/data
+    depends_on:
+      - database
     restart: unless-stopped
-    networks:
-      - sentient-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - '3000:80'
+    restart: unless-stopped
+    depends_on:
+      - sentient-sculptor
 
 volumes:
-  sentient-sculptor: {}
-  db-data: {}
-
-networks:
-  sentient-network:
-    driver: bridge
+  db-data:
+  sentient-sculptor:
