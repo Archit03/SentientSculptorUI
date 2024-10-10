@@ -1,34 +1,56 @@
-services:
-  ollama:
-    volumes:
-      - ollama:/root/.ollama
-    container_name: ollama
-    pull_policy: always
-    tty: true
-    restart: unless-stopped
-    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
+version: '3.8'
 
-  open-webui:
+services:
+  sentient-sculptor:
+    container_name: sentient-sculptor
     build:
-      context: .
-      args:
-        OLLAMA_BASE_URL: '/ollama'
-      dockerfile: Dockerfile
-    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
-    container_name: open-webui
+      context: .  # Path to your Dockerfile or project
+      dockerfile: Dockerfile  # Use Dockerfile in the same directory (customize as needed)
     volumes:
-      - open-webui:/app/backend/data
-    depends_on:
-      - ollama
+      - sentient-sculptor:/app/data  # Persistent data for the Sentient Sculptor model
     ports:
-      - ${OPEN_WEBUI_PORT-3000}:8080
+      - "5000:5000"  # Assuming the Sentient Sculptor model exposes an API on port 5000
     environment:
-      - 'OLLAMA_BASE_URL=http://ollama:11434'
-      - 'WEBUI_SECRET_KEY='
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      - MODEL_PATH=/app/data/model.pth  # Path to the model file
+      - TOKENIZER_PATH=/app/data/bpe_token.json  # Path to the tokenizer file
     restart: unless-stopped
+    tty: true
+    depends_on:
+      - database  # Assuming there's a database for managing data (if necessary)
+    networks:
+      - sentient-network
+
+  sentient-ui:
+    container_name: sentient-ui
+    build:
+      context: ./ui  # Assuming the frontend (web UI) is in the "ui" folder
+      dockerfile: Dockerfile  # Use Dockerfile for the web UI
+    ports:
+      - "3000:3000"  # Frontend exposed on port 3000
+    environment:
+      - API_URL=http://sentient-sculptor:5000  # Connect the UI to the Sentient Sculptor API
+    depends_on:
+      - sentient-sculptor
+    networks:
+      - sentient-network
+
+  database:
+    container_name: sentient-db
+    image: postgres:13  # Example database if Sentient Sculptor requires one
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=your_user
+      - POSTGRES_PASSWORD=your_password
+      - POSTGRES_DB=sentient_db
+    restart: unless-stopped
+    networks:
+      - sentient-network
 
 volumes:
-  ollama: {}
-  open-webui: {}
+  sentient-sculptor: {}
+  db-data: {}
+
+networks:
+  sentient-network:
+    driver: bridge
