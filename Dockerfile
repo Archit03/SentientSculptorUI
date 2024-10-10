@@ -21,8 +21,8 @@ RUN npm install
 # Copy the rest of the application files
 COPY . .
 
-# Build the frontend
-RUN npm run build
+# Build the frontend with increased memory for Node.js
+RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build
 
 # Second stage: Use a lightweight server image to serve static frontend
 FROM nginx:alpine
